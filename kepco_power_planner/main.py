@@ -7,6 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException
 
 # --- Home Assistant API Configuration ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
@@ -112,6 +113,44 @@ try:
         print("Warning: Data might be inconsistent after 5 retries.")
 
 
+    # "실시간 요금" 상세 페이지로 이동
+    driver.get("https://pp.kepco.co.kr/pr/pr0201.do?menu_id=O020401")
+    
+    # div.smart_now 로딩 대기
+    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "smart_now")))
+
+    # thead가 있는지 확인하고 발전량 및 상계 후 요금 계산
+    has_thead = False
+    generation_amount = 0.0
+    net_realtime_charge = 0
+    try:
+        thead = driver.find_element(By.CSS_SELECTOR, "div.smart_now thead")
+        if len(thead.find_elements(By.TAG_NAME, 'tr')) > 0:
+            has_thead = True
+        
+        if has_thead:
+            try:
+                # '전력량요금' 행을 찾아 마지막 칸의 값을 가져옴
+                power_rate_row = driver.find_element(By.XPATH, "//th[contains(text(), '전력량요금')]/..")
+                last_td = power_rate_row.find_elements(By.TAG_NAME, 'td')[-1]
+                net_usage_str = last_td.text.replace('kWh', '').strip()
+                net_usage = float(net_usage_str)
+                
+                # 발전량 계산 (실시간 사용량 - 상계 후 사용량)
+                generation_amount = realtime_usage - net_usage
+
+                # '실시간 요금' 행을 tfoot에서 찾아 마지막 칸의 값을 가져옴
+                charge_row = driver.find_element(By.XPATH, "//tfoot//th[contains(text(), '실시간 요금')]/..")
+                last_charge_td = charge_row.find_elements(By.TAG_NAME, 'td')[-1]
+                net_charge_str = last_charge_td.text.replace('원', '').replace(',', '').strip()
+                net_realtime_charge = int(net_charge_str)
+            except (NoSuchElementException, IndexError, ValueError):
+                # 관련 요소를 찾지 못하거나 값 변환에 실패하면 값들은 0으로 유지
+                pass
+    except NoSuchElementException:
+        # thead가 없으면 False로 유지
+        pass
+
     print("Data scraped, updating Home Assistant sensors...")
 
     # Update Home Assistant sensors with cleaned data
@@ -119,6 +158,10 @@ try:
     update_ha_sensor("sensor.kepco_predicted_usage", predicted_usage, {"friendly_name": "예상 사용량", "unit_of_measurement": "kWh", "icon": "mdi:flash-alert"})
     update_ha_sensor("sensor.kepco_realtime_fee", realtime_fee, {"friendly_name": "실시간 요금", "unit_of_measurement": "원", "icon": "mdi:cash"})
     update_ha_sensor("sensor.kepco_predicted_fee", predicted_fee, {"friendly_name": "예상 요금", "unit_of_measurement": "원", "icon": "mdi:cash-multiple"})
+
+    if has_thead:
+        update_ha_sensor("sensor.kepco_generation_amount", round(generation_amount, 3), {"friendly_name": "발전량", "unit_of_measurement": "kWh", "icon": "mdi:solar-power"})
+        update_ha_sensor("sensor.kepco_net_realtime_charge", net_realtime_charge, {"friendly_name": "상계 후 요금", "unit_of_measurement": "원", "icon": "mdi:cash-minus"})
 
     print("Home Assistant sensors updated.")
 
