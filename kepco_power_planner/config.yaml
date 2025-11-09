@@ -20,5 +20,5 @@ options:
 schema:
   accounts:
     - RSA_USER_ID: str
-      RSA_USER_PWD: password
+      RSA_USER_PWD: str
   update_interval: "int(1,)"
