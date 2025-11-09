@@ -90,8 +90,8 @@ try:
             else:
                 raise ValueError("Failed to scrape data, fields were empty.")
 
-        realtime_usage = float(realtime_usage_str.replace('kWh', '').strip())
-        predicted_usage = float(predicted_usage_str.replace('kWh', '').strip())
+        realtime_usage = float(realtime_usage_str.replace('kWh', '').replace(',', '').strip())
+        predicted_usage = float(predicted_usage_str.replace('kWh', '').replace(',', '').strip())
         realtime_fee = int(realtime_fee_str.replace('원', '').replace(',', '').strip())
         predicted_fee = int(predicted_fee_str.replace('원', '').replace(',', '').strip())
 
@@ -136,7 +136,7 @@ try:
                 power_rate_row = driver.find_element(By.XPATH, "//th[contains(text(), '전력량요금')]/..")
                 last_td = power_rate_row.find_elements(By.TAG_NAME, 'td')[-1]
                 net_usage_str = last_td.text.replace('kWh', '').strip()
-                net_usage = float(net_usage_str)
+                net_usage = float(net_usage_str.replace(',', ''))
                 
                 # 발전량 계산 (실시간 사용량 - 상계 후 사용량)
                 generation_amount = realtime_usage - net_usage
