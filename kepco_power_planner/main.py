@@ -8,7 +8,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, NoAlertPresentException
 
 # --- Home Assistant API Configuration ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
@@ -188,10 +188,26 @@ for account in ACCOUNTS:
         driver.find_element(By.ID, "RSA_USER_PWD").send_keys(RSA_USER_PWD)
         login_button = wait.until(EC.presence_of_element_located((By.ID, "intro_btn_indi")))
         driver.execute_script("arguments[0].click();", login_button)
-        print("Logged in.")
+
+        # Check for login failure alert immediately after click
+        time.sleep(1) # Give a moment for the alert to potentially appear
+        try:
+            alert = driver.switch_to.alert
+            alert_text = alert.text
+            print(f"Login failed with alert: {alert_text}")
+            alert.accept()
+            continue # Skip to the next account
+        except NoAlertPresentException:
+            # No alert, so we assume login might be successful. Proceed to verify.
+            pass
 
         # Wait for main page to load after login
-        wait.until(EC.presence_of_element_located((By.ID, "country_id")))
+        try:
+            wait.until(EC.presence_of_element_located((By.ID, "country_id")))
+            print("Logged in.")
+        except TimeoutException:
+            print("Login failed (no alert, but main page did not load).")
+            continue
         
         # Get all customer numbers
         cust_no_select = driver.find_element(By.ID, "country_id")
